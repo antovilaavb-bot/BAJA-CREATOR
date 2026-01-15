@@ -1,75 +1,78 @@
 import streamlit as st
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
+import requests
 
-st.set_page_config(page_title="BAJA-CREATOR | Ultra-Realism", layout="wide")
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Confital Designer Pro", layout="wide")
 
-# --- CONTROLES PRO ---
-with st.sidebar:
-    st.header("🎛️ Ajustes de Realismo")
-    h_ola = st.slider("Altura de Ola (m)", 1.0, 6.0, 3.5)
-    tubo = st.slider("Proyección del Labio (Tubo)", 0.0, 3.0, 1.8)
-    espuma = st.slider("Densidad de Espuma", 0.0, 1.0, 0.5)
-    turbulencia = st.slider("Rugosidad del Fondo", 0.0, 1.0, 0.3)
+# --- 1. MOTOR DE DATOS REALES (API) ---
+def get_real_swell():
+    lat, lon = 28.17, -15.43 # El Confital
+    url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,wave_period&timezone=auto"
+    try:
+        res = requests.get(url).json()
+        return res['hourly']['wave_height'][0], res['hourly']['wave_period'][0]
+    except:
+        return 1.5, 12.0 # Valores por defecto si falla la API
 
-# --- MOTOR DE GEOMETRÍA AVANZADA ---
-n = 100
-x = np.linspace(0, 100, n)
-y = np.linspace(-40, 40, n)
-X, Y = np.meshgrid(x, y)
+# --- 2. LÓGICA DE FÍSICA Y OPTIMIZACIÓN ---
+def calcular_iribarren(h, periodo, pendiente):
+    L0 = (9.81 * (periodo**2)) / (2 * np.pi) # Longitud de onda en aguas profundas
+    esbeltez = h / L0
+    xi = (1/pendiente) / np.sqrt(esbeltez)
+    return xi
 
-# 1. FONDO VOLCÁNICO (Con ruido para realismo)
-ruido_fondo = (np.random.rand(n, n) - 0.5) * turbulencia * 2
-Z_fondo = -15 + (0.15 * X) + (5 * np.exp(-(X-70)**2/200 - Y**2/500)) + ruido_fondo
-Z_fondo = np.minimum(Z_fondo, 0.1)
+# --- 3. INTERFAZ DE USUARIO (SIDEBAR) ---
+st.sidebar.title("🎮 Panel de Control")
+if st.sidebar.button("📡 Cargar Swell Real"):
+    h_api, t_api = get_real_swell()
+    st.session_state.h = h_api
+    st.session_state.t = t_api
 
-# 2. LA OLA (Cilindro matemático)
-# Creamos la forma de la ola
-fase = (X - 70) / 10
-# Esta fórmula genera la "C" del tubo
-Z_ola = h_ola * np.exp(-fase**2) * np.cos(Y/25) 
-# Deformación del labio (lo que crea el efecto visual de la imagen)
-X_deformado = X + (tubo * Z_ola * np.clip(fase + 1, 0, 1))
+h = st.sidebar.slider("Altura de Ola (m)", 0.5, 5.0, st.session_state.get('h', 1.5))
+t = st.sidebar.slider("Periodo (s)", 4, 20, st.session_state.get('t', 12))
+marea = st.sidebar.slider("Marea (m)", -1.5, 1.5, 0.0)
+m = st.sidebar.slider("Pendiente Laja (1:X)", 5, 40, 12)
 
-# 3. CAPA DE ESPUMA (Segunda superficie para realismo)
-Z_espuma = np.where(Z_ola > (h_ola * 0.8), Z_ola + 0.2, np.nan)
+# --- 4. CÁLCULOS Y DIAGNÓSTICO ---
+xi = calcular_iribarren(h, t, m)
+st.title("🌊 Wave Engineering: El Confital")
+col1, col2, col3 = st.columns(3)
+col1.metric("Iribarren (ξ)", f"{xi:.2f}")
+col2.metric("Swell", f"{h}m @ {t}s")
+col3.metric("Estado", "TUBO" if 1.2 < xi < 2.5 else "DERRAME")
 
-# --- RENDERIZADO ---
-fig = go.Figure()
+# --- 5. VISUALIZACIÓN 3D INTERACTIVA ---
+st.subheader("🔭 Modelo Geométrico 3D")
 
-# Superficie del Fondo (Roca)
-fig.add_trace(go.Surface(
-    z=Z_fondo, x=X, y=Y,
-    colorscale='Greys', showscale=False, opacity=1,
-    name="Fondo Volcánico"
-))
+x = np.linspace(0, 100, 100)
+y_cross = np.linspace(0, 30, 30)
+X, Y = np.meshgrid(x, y_cross)
 
-# Superficie de la Ola (Agua profunda)
-fig.add_trace(go.Surface(
-    z=Z_ola, x=X_deformado, y=Y,
-    colorscale='Blues', opacity=0.8, showscale=False,
-    name="Cuerpo de la Ola"
-))
+# Generar fondo con escalón (Laja)
+fondo_base = np.full(100, 12.0)
+fondo_base[50:] = 2.5 + marea
+Z_fondo = np.tile(-fondo_base, (30, 1))
 
-# Superficie de Espuma (Blanco vibrante)
-if espuma > 0:
-    fig.add_trace(go.Surface(
-        z=Z_espuma, x=X_deformado, y=Y,
-        colorscale=[[0, 'white'], [1, 'white']],
-        opacity=espuma, showscale=False, name="Espuma"
-    ))
+# Generar Ola (Simulación de cresta)
+fase = h * np.sin(X/5) * np.exp(-(X-55)**2 / 300)
+Z_agua = np.tile(fase, (1, 1)) 
 
-fig.update_layout(
-    scene=dict(
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
-        zaxis=dict(range=[-20, 10], backgroundcolor="rgb(10, 10, 20)"),
-        aspectratio=dict(x=1.5, y=1, z=0.5),
-        camera=dict(eye=dict(x=1.2, y=-1.4, z=0.6))
-    ),
-    margin=dict(l=0, r=0, b=0, t=0),
-    height=800,
-    paper_bgcolor='black'
-)
+fig = go.Figure(data=[
+    # Fondo Rocoso
+    go.Surface(z=Z_fondo, x=X, y=Y, colorscale='Turbid', showscale=False, name="Fondo"),
+    # Superficie del Agua
+    go.Surface(z=Z_agua, x=X, y=Y, colorscale='Blues', opacity=0.8, name="Ola")
+])
 
+fig.update_layout(scene=dict(zaxis=dict(range=[-15, 7])), margin=dict(l=0, r=0, b=0, t=0))
 st.plotly_chart(fig, use_container_width=True)
+
+# --- 6. EXPORTACIÓN ---
+st.divider()
+if st.button("💾 Exportar Diseño para Fabricación"):
+    df = pd.DataFrame({'distancia': x, 'profundidad': fondo_base})
+    st.download_button("Descargar CSV", df.to_csv(), "diseño_laja.csv", "text/csv")
+    st.success("Datos listos para CNC/Impresión 3D")
