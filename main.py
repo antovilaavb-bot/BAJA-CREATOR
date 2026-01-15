@@ -57,4 +57,8 @@ col4.metric("Estado", "Óptimo" if p_sim > 12 else "Regular")
 st.markdown("---")
 
 # 5. MAPA Y ANÁLISIS DE ENERGÍA
-c1, c2 =
+c1, c2 = st.columns([1, 1])  # <-- FALTA EL "st.columns([1, 1])"
+
+with c1:
+    st.subheader("📍 Ubicación de la Baja")
+
