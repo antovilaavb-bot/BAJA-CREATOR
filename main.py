@@ -1,83 +1,60 @@
 import streamlit as st
+import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 import requests
 from datetime import datetime
 
-# 1. CONFIGURACIÓN DE PÁGINA (Debe ser lo primero)
-st.set_page_config(page_title="Confital Wave Designer Pro", layout="wide")
+# 1. CONFIGURACIÓN DE INTERFAZ DE ALTO NIVEL
+st.set_page_config(
+    page_title="BAJA-CREATOR | Pro Wave Intelligence",
+    page_icon="🌊",
+    layout="wide"
+)
 
-# 2. MOTOR DE CÁLCULO (Lógica de Ingeniería)
-class WaveEngine:
-    @staticmethod
-    def calcular_profundidad_critica(h):
-        return h * 1.28
+# Estética Profesional (Modo Oscuro Forzado)
+st.markdown("""
+    <style>
+    .stApp { background-color: #0e1117; color: #fafafa; }
+    div[data-testid="stMetricValue"] { color: #00d4ff; font-family: monospace; }
+    .stPlotlyChart { border-radius: 10px; overflow: hidden; }
+    </style>
+    """, unsafe_allow_html=True)
 
-    @staticmethod
-    def get_score(h, t, v_dir, v_vel):
-        score = 0
-        if 1.5 <= h <= 3.0 and t >= 12: score += 50
-        if 80 <= v_dir <= 140 and v_vel < 25: score += 50
-        return score
+# 2. MOTOR DE DATOS (CONEXIÓN API SATELITAL)
+@st.cache_data(ttl=3600)
+def fetch_marine_data():
+    # Coordenadas exactas de El Confital (La Laja)
+    lat, lon = 28.17, -15.43
+    url = f"https://api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,wave_period,wave_direction&timezone=auto"
+    try:
+        response = requests.get(url).json()
+        current_h = response['hourly']['wave_height'][0]
+        current_p = response['hourly']['wave_period'][0]
+        return current_h, current_p
+    except:
+        return 1.2, 11.0 # Valores de respaldo (Backup)
 
-# 3. INTERFAZ: BARRA LATERAL (Controles)
-st.sidebar.title("🎮 Panel de Control")
-st.sidebar.markdown("---")
+h_real, p_real = fetch_marine_data()
 
-# Selectores de Tiempo y Ubicación
-modo_tiempo = st.sidebar.selectbox("Modo Temporal", ["Tiempo Real", "Previsión"])
-v_vel = st.sidebar.slider("Intensidad Viento (km/h)", 0, 60, 15)
-v_dir = st.sidebar.slider("Dirección Viento (°)", 0, 360, 100)
+# 3. BARRA LATERAL (CONTROL DE INGENIERÍA)
+st.sidebar.header("🛠️ Parámetros de Simulación")
+st.sidebar.markdown("Ajusta las variables para ver el comportamiento del swell en la baja.")
 
-# 4. CUERPO PRINCIPAL: MAPA Y DASHBOARD
-st.title("🌊 Confital Wave Designer Pro")
-st.write("Suite de Inteligencia Costera y Diseño Batimétrico")
+h_sim = st.sidebar.slider("Altura de Ola (m)", 0.0, 5.0, float(h_real))
+p_sim = st.sidebar.slider("Periodo (s)", 4, 22, int(p_real))
+coef_marea = st.sidebar.select_slider("Coeficiente de Marea", options=["Baja", "Media", "Alta"])
 
-col_mapa, col_stats = st.columns([2, 1])
+# 4. DASHBOARD PRINCIPAL
+st.title("🌊 BAJA-CREATOR PRO")
+st.caption(f"Sincronizado con estación meteorológica local | {datetime.now().strftime('%H:%M')} GMT")
 
-with col_mapa:
-    # Creamos un dataframe simple con la ubicación
-    import pandas as pd
-    map_data = pd.DataFrame({'lat': [28.17], 'lon': [-15.43]})
-    
-    # Mapa nativo de Streamlit (Extremadamente estable)
-    st.map(map_data, zoom=13)
-    st.caption("📍 Ubicación actual: El Confital, Las Palmas")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Altura Swell", f"{h_sim} m")
+col2.metric("Periodo", f"{p_sim} s")
+col3.metric("Energía", f"{(h_sim**2 * p_sim):.1f} kJ/m")
+col4.metric("Estado", "Óptimo" if p_sim > 12 else "Regular")
 
-# 5. SIMULACIÓN 3D (Lógica de Visualización)
-st.subheader("🛰️ Simulación de Interacción 3D")
+st.markdown("---")
 
-# Generamos datos de prueba para el visualizador
-x = np.linspace(0, 50, 50)
-y = np.linspace(0, 30, 30)
-X, Y = np.meshgrid(x, y)
-# Simulamos una rampa batimétrica (laja)
-Z_fondo = -0.1 * X + (np.sin(Y/5) * 0.5) 
-Z_agua = np.exp(-((X-25)**2)/20) * 2 # Ola base
-
-# Aplicamos efecto viento
-factor_viento = 1.1 if 80 <= v_dir <= 140 else 0.9
-Z_agua_viento = Z_agua * factor_viento
-
-fig = go.Figure(data=[
-    go.Surface(z=Z_fondo, x=X, y=Y, colorscale='Greys', showscale=False, opacity=0.8),
-    go.Surface(z=Z_agua_viento, x=X, y=Y, colorscale='Blues', opacity=0.7)
-])
-
-fig.update_layout(scene=dict(aspectmode='manual', aspectratio=dict(x=2, y=1, z=0.5)),
-                  paper_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, b=0, t=0))
-
-st.plotly_chart(fig, use_container_width=True)
-
-# 6. ALERTAS Y KPI
-score = WaveEngine.get_score(1.8, 14, v_dir, v_vel) # Ejemplo con 1.8m y 14s
-
-if score >= 80:
-    st.success(f"🔥 SESIÓN ÉPICA DETECTADA: Score {score}/100")
-else:
-
-    st.info(f"📊 Calidad del Spot: {score}/100")
-
-
-
-
+# 5. MAPA Y ANÁLISIS DE ENERGÍA
+c1, c2 =
