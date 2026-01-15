@@ -1,6 +1,7 @@
 streamlit
 numpy
 pandas
-ploty
+plotly
 requests
+
 
