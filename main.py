@@ -2,85 +2,66 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 
-# 1. CONFIGURACIÓN DE PANTALLA
-st.set_page_config(page_title="BAJA-CREATOR | Dynamic Wave Simulator", layout="wide", page_icon="🌊")
+st.set_page_config(page_title="BAJA-CREATOR | Tube Designer", layout="wide")
 
-st.title("🌊 BAJA-CREATOR: Simulador Dinámico de Ola y Batimetría")
-st.write("Ajusta el fondo marino y las características del swell para predecir el comportamiento de la rompiente.")
+st.title("📐 Simulador de Morfología de Ola y Fondo")
 
-# 2. CONTROLES DE INGENIERÍA (BARRA LATERAL)
-st.sidebar.header("🛠️ Parámetros de Diseño")
-st.sidebar.markdown("**Fondo Marino (Batimetría):**")
-pendiente_fondo = st.sidebar.slider("Inclinación del Fondo (%)", 1.0, 15.0, 7.0, help="Pendiente del fondo marino hacia la costa.")
-profundidad_max_fondo = st.sidebar.slider("Profundidad Inicial (m)", 10, 40, 25, help="Profundidad máxima del área de simulación.")
-
+# --- CONTROLES DE DISEÑO ---
+st.sidebar.header("Configuración de la Baja")
+tipo_fondo = st.sidebar.selectbox("Tipo de Fondo", ["Rampa Plana", "Escalón (Step)", "Pico (A-Frame)"])
+pendiente = st.sidebar.slider("Pendiente del fondo (%)", 5, 30, 15)
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Características de la Ola (Swell):**")
-altura_ola = st.sidebar.slider("Altura de Ola (m)", 0.5, 7.0, 2.5, help="Altura de la ola en aguas abiertas.")
-periodo_ola = st.sidebar.slider("Periodo de Ola (s)", 5, 20, 12, help="Tiempo entre crestas de ola.")
+st.sidebar.header("Dinámica del Labio")
+agresividad = st.sidebar.slider("Agresividad del Tubo", 0.1, 2.0, 1.0)
+altura_ola = st.sidebar.slider("Altura (m)", 1.0, 8.0, 3.0)
 
-# 3. MOTOR DE CÁLCULO FÍSICO (INTERACCIÓN OLA-FONDO)
-
-# Malla para el fondo y la ola
-x = np.linspace(0, 100, 70)  # Distancia hacia la costa (más detalle)
-y = np.linspace(0, 50, 40)   # Ancho de la sección
+# --- MOTOR GEOMÉTRICO ---
+x = np.linspace(0, 60, 100)
+y = np.linspace(-20, 20, 100)
 X, Y = np.meshgrid(x, y)
 
-# Cálculo del Fondo Marino (la 'baja')
-Z_fondo = -(profundidad_max_fondo - (pendiente_fondo/100 * X))
-Z_fondo = np.maximum(Z_fondo, -0.2) # Evitar que el fondo suba por encima del nivel del mar
+# 1. Modelado del fondo (La Baja)
+if tipo_fondo == "Rampa Plana":
+    Z_fondo = -(20 - (pendiente/100 * X))
+elif tipo_fondo == "Escalón (Step)":
+    Z_fondo = np.where(X < 30, -15, -2)
+else: # Pico
+    Z_fondo = -(15 - (pendiente/100 * X)) + (np.abs(Y)/2)
 
-# Cálculo de la Ola (interactuando con el fondo)
-# La ola crece y se deforma al acercarse a la poca profundidad
-# Usamos una función que simula el incremento de altura y la ruptura
-profundidad_relativa = -Z_fondo # Profundidad actual en cada punto
-altura_relativa = altura_ola * (1 + (periodo_ola / 20) * np.exp(-profundidad_relativa / 10))
-# La ola rompe cuando la profundidad es menor a 1.3 veces la altura de ola
-Z_ola_surface = np.sin((X/periodo_ola) * 2 * np.pi + Y/10) * altura_relativa * np.exp(-X/40) # Forma sinusoidal de la ola
-Z_ola_surface[profundidad_relativa < (altura_relativa * 0.8)] *= 0.5 # Efecto de rompiente visual
+Z_fondo = np.maximum(Z_fondo, -0.5)
 
-# Ajuste visual para que la ola no esté por debajo del nivel del mar en la rompiente
-Z_ola_surface = np.maximum(Z_ola_surface, 0) 
+# 2. Modelado del Tubo (El Labio)
+# Creamos una deformación que lanza el "Z" hacia arriba y el "X" hacia adelante
+Z_ola = np.zeros_like(X)
+# Punto de rotura (donde el fondo es poco profundo)
+mask_rompiente = X > 35 
 
+# Ecuación para el "labio" de la ola
+# Usamos una campana de Gauss deformada para simular el cilindro
+Z_ola = (altura_ola * np.exp(-(X-40)**2 / 20)) * (1 / (1 + np.abs(Y)/10))
 
-# 4. VISUALIZADOR 3D PROFESIONAL CON PLOTLY
-st.subheader("Visualización 3D Dinámica de la Ola y el Fondo")
+# Simulamos el "labio" lanzándose hacia adelante
+X_deformado = X + (Z_ola * agresividad) 
 
-fig = go.Figure(data=[
-    # Capa del Fondo Marino (color tierra/gris)
-    go.Surface(z=Z_fondo, x=X, y=Y, colorscale='Greys_r', showscale=False, name="Fondo Marino", opacity=0.9),
-    # Capa de la Ola (azul)
-    go.Surface(z=Z_ola_surface, x=X, y=Y, colorscale='Blues', opacity=0.7, name="Ola Rompiente")
-])
+# --- RENDERIZADO 3D ---
+fig = go.Figure()
+
+# Dibujamos el Fondo
+fig.add_trace(go.Surface(z=Z_fondo, x=X, y=Y, colorscale='Greys', opacity=0.8, showscale=False, name="Fondo"))
+
+# Dibujamos la Ola con la deformación del labio
+fig.add_trace(go.Surface(z=Z_ola, x=X_deformado, y=Y, colorscale='Blues', opacity=0.9, name="Ola/Tubo"))
 
 fig.update_layout(
     scene=dict(
-        xaxis_title='Distancia a la Costa (m)',
-        yaxis_title='Ancho del Frente de Ola (m)',
-        zaxis_title='Altura/Profundidad (m)',
-        zaxis=dict(range=[-profundidad_max_fondo, altura_ola * 2]), # Rango para ver todo el espectro
-        aspectratio=dict(x=1.5, y=0.8, z=0.4), # Ajusta la perspectiva 3D
-        camera=dict(eye=dict(x=1.8, y=1.8, z=0.5)) # Posición inicial de la cámara
+        zaxis=dict(range=[-20, 10]),
+        aspectratio=dict(x=1.5, y=1, z=0.5),
+        camera=dict(eye=dict(x=1.2, y=-1.5, z=0.8))
     ),
-    margin=dict(l=0, r=0, b=0, t=0),
     height=700,
-    paper_bgcolor='rgba(0,0,0,0)', # Fondo transparente para Streamlit
-    plot_bgcolor='rgba(0,0,0,0)'
+    margin=dict(l=0, r=0, b=0, t=0)
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
-# 5. RESUMEN DE INGENIERÍA Y ALERTAS
-st.markdown("---")
-col_info, col_metrics = st.columns(2)
-
-with col_info:
-    st.info("### 📊 Análisis de Rompiente")
-    st.write(f"Con una **pendiente del {pendiente_fondo:.1f}%** y una ola de **{altura_ola:.1f}m** y **{periodo_ola}s**, la ola tiende a ser de tipo **{ 'tubera (Plunging)' if pendiente_fondo > 10 else 'murallera (Spilling)' }**.")
-    st.write("La interacción del periodo con la batimetría define la potencia y forma del rompiente.")
-
-with col_metrics:
-    distancia_rompiente_estimada = (profundidad_max_fondo / (pendiente_fondo/100)) - (altura_ola * 2) # Estimación
-    st.metric("Distancia Estimada de Impacto (desde inicio)", f"{max(0, distancia_rompiente_estimada):.1f} metros")
-    st.metric("Profundidad Crítica de Rompiente", f"{altura_ola * 1.3:.1f} metros")
-    st.metric("Energía Calculada de la Ola", f"{altura_ola**2 * periodo_ola:.1f} kJ/m")
+st.info("💡 **Consejo Pro:** Mueve el slider de 'Agresividad del Tubo' para ver cómo el labio (la malla azul) se proyecta hacia adelante superando la base, creando el efecto visual del tubo.")
