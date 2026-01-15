@@ -38,17 +38,13 @@ st.write("Suite de Inteligencia Costera y Diseño Batimétrico")
 col_mapa, col_stats = st.columns([2, 1])
 
 with col_mapa:
-    # Creamos el mapa base más simple posible
-    m = folium.Map(location=[28.17, -15.43], zoom_start=14)
+    # Creamos un dataframe simple con la ubicación
+    import pandas as pd
+    map_data = pd.DataFrame({'lat': [28.17], 'lon': [-15.43]})
     
-   # Usamos el componente con el parámetro 'key' para forzar un renderizado limpio
-    mapa_output = st_folium(
-        m, 
-        key="mapa_principal",
-        width=700, 
-        height=400,
-        returned_objects=[]
-    ) # <--- ESTE ES EL PARÉNTESIS QUE FALTA
+    # Mapa nativo de Streamlit (Extremadamente estable)
+    st.map(map_data, zoom=13)
+    st.caption("📍 Ubicación actual: El Confital, Las Palmas")
 
 # 5. SIMULACIÓN 3D (Lógica de Visualización)
 st.subheader("🛰️ Simulación de Interacción 3D")
@@ -83,5 +79,6 @@ if score >= 80:
 else:
 
     st.info(f"📊 Calidad del Spot: {score}/100")
+
 
 
