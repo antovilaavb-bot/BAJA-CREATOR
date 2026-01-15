@@ -1,8 +1,6 @@
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
-from streamlit_folium import st_folium
-import folium
 import requests
 from datetime import datetime
 
@@ -79,6 +77,7 @@ if score >= 80:
 else:
 
     st.info(f"📊 Calidad del Spot: {score}/100")
+
 
 
 
