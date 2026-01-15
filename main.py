@@ -38,9 +38,16 @@ st.write("Suite de Inteligencia Costera y Diseño Batimétrico")
 col_mapa, col_stats = st.columns([2, 1])
 
 with col_mapa:
-    m = folium.Map(location=[28.17, -15.43], zoom_start=14, tiles="CartoDB dark_matter")
-    # Añadimos captura de clic
-    mapa_output = st_folium(m, width=700, height=400)
+    # Creamos el mapa base más simple posible
+    m = folium.Map(location=[28.17, -15.43], zoom_start=14)
+    
+    # Usamos el componente con el parámetro 'key' para forzar un renderizado limpio
+    mapa_output = st_folium(
+        m, 
+        key="mapa_principal",
+        width=700, 
+        height=400,
+        returned_objects=[] # Esto evita que intente devolver datos complejos que rompen el JSON)
 
 # 5. SIMULACIÓN 3D (Lógica de Visualización)
 st.subheader("🛰️ Simulación de Interacción 3D")
@@ -75,3 +82,4 @@ if score >= 80:
 else:
 
     st.info(f"📊 Calidad del Spot: {score}/100")
+
