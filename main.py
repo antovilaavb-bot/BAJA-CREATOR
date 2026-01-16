@@ -1,78 +1,93 @@
 import streamlit as st
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-import requests
+import streamlit.components.v1 as components
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Confital Designer Pro", layout="wide")
+# Configuración de la página profesional
+st.set_page_config(page_title="Confital Wave Designer Pro", layout="wide")
 
-# --- 1. MOTOR DE DATOS REALES (API) ---
-def get_real_swell():
-    lat, lon = 28.17, -15.43 # El Confital
-    url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,wave_period&timezone=auto"
-    try:
-        res = requests.get(url).json()
-        return res['hourly']['wave_height'][0], res['hourly']['wave_period'][0]
-    except:
-        return 1.5, 12.0 # Valores por defecto si falla la API
+st.title("🌊 Confital Wave Designer Pro")
+st.sidebar.header("Parámetros de la Ola")
 
-# --- 2. LÓGICA DE FÍSICA Y OPTIMIZACIÓN ---
-def calcular_iribarren(h, periodo, pendiente):
-    L0 = (9.81 * (periodo**2)) / (2 * np.pi) # Longitud de onda en aguas profundas
-    esbeltez = h / L0
-    xi = (1/pendiente) / np.sqrt(esbeltez)
-    return xi
+# Controles de usuario (UI Profesional)
+h = st.sidebar.slider("Altura de la Ola (m)", 1.0, 8.0, 4.0)
+s = st.sidebar.slider("Velocidad del Periodo", 0.5, 3.0, 1.8)
+c = st.sidebar.slider("Curvatura del Tubo", 1.0, 5.0, 2.5)
+t_val = st.sidebar.slider("Cierre del Tubo (Tightness)", 0.1, 0.8, 0.3)
 
-# --- 3. INTERFAZ DE USUARIO (SIDEBAR) ---
-st.sidebar.title("🎮 Panel de Control")
-if st.sidebar.button("📡 Cargar Swell Real"):
-    h_api, t_api = get_real_swell()
-    st.session_state.h = h_api
-    st.session_state.t = t_api
+# El código HTML/Three.js embebido
+three_js_code = f"""
+<div id="container"></div>
+<script type="importmap">
+  {{
+    "imports": {{
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }}
+  }}
+</script>
+<script type="module">
+    import * as THREE from 'three';
 
-h = st.sidebar.slider("Altura de Ola (m)", 0.5, 5.0, st.session_state.get('h', 1.5))
-t = st.sidebar.slider("Periodo (s)", 4, 20, st.session_state.get('t', 12))
-marea = st.sidebar.slider("Marea (m)", -1.5, 1.5, 0.0)
-m = st.sidebar.slider("Pendiente Laja (1:X)", 5, 40, 12)
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB);
 
-# --- 4. CÁLCULOS Y DIAGNÓSTICO ---
-xi = calcular_iribarren(h, t, m)
-st.title("🌊 Wave Engineering: El Confital")
-col1, col2, col3 = st.columns(3)
-col1.metric("Iribarren (ξ)", f"{xi:.2f}")
-col2.metric("Swell", f"{h}m @ {t}s")
-col3.metric("Estado", "TUBO" if 1.2 < xi < 2.5 else "DERRAME")
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('container').appendChild(renderer.domElement);
 
-# --- 5. VISUALIZACIÓN 3D INTERACTIVA ---
-st.subheader("🔭 Modelo Geométrico 3D")
+    // Material con Transparencia y DoubleSide (Back-face Culling OFF)
+    const material = new THREE.MeshPhysicalMaterial({{
+        color: 0x00aaff,
+        transmission: 0.9,
+        thickness: 1.5,
+        roughness: 0.05,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide
+    }});
 
-x = np.linspace(0, 100, 100)
-y_cross = np.linspace(0, 30, 30)
-X, Y = np.meshgrid(x, y_cross)
+    const geometry = new THREE.PlaneGeometry(60, 100, 120, 120);
+    const sea = new THREE.Mesh(geometry, material);
+    sea.rotation.x = -Math.PI / 2;
+    scene.add(sea);
 
-# Generar fondo con escalón (Laja)
-fondo_base = np.full(100, 12.0)
-fondo_base[50:] = 2.5 + marea
-Z_fondo = np.tile(-fondo_base, (30, 1))
+    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    sun.position.set(10, 20, 10);
+    scene.add(sun);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-# Generar Ola (Simulación de cresta)
-fase = h * np.sin(X/5) * np.exp(-(X-55)**2 / 300)
-Z_agua = np.tile(fase, (1, 1)) 
+    camera.position.set(5, 5, 25);
+    camera.lookAt(0, 0, 0);
 
-fig = go.Figure(data=[
-    # Fondo Rocoso
-    go.Surface(z=Z_fondo, x=X, y=Y, colorscale='Turbid', showscale=False, name="Fondo"),
-    # Superficie del Agua
-    go.Surface(z=Z_agua, x=X, y=Y, colorscale='Blues', opacity=0.8, name="Ola")
-])
+    function animate(time) {{
+        requestAnimationFrame(animate);
+        const t = time * 0.001 * {s};
+        const pos = sea.geometry.attributes.position.array;
 
-fig.update_layout(scene=dict(zaxis=dict(range=[-15, 7])), margin=dict(l=0, r=0, b=0, t=0))
-st.plotly_chart(fig, use_container_width=True)
+        for (let i = 0; i < pos.length; i += 3) {{
+            let x = pos[i];
+            let y = pos[i + 1];
 
-# --- 6. EXPORTACIÓN ---
-st.divider()
-if st.button("💾 Exportar Diseño para Fabricación"):
-    df = pd.DataFrame({'distancia': x, 'profundidad': fondo_base})
-    st.download_button("Descargar CSV", df.to_csv(), "diseño_laja.csv", "text/csv")
-    st.success("Datos listos para CNC/Impresión 3D")
+            const waveFace = Math.sin(y * {t_val} + t);
+            pos[i + 2] = waveFace * {h};
+
+            // Efecto Tubo
+            if (pos[i + 2] > 0.5) {{ 
+                const lip = Math.pow(pos[i + 2] / {h}, 2);
+                pos[i] = x + (lip * {c});
+            }}
+        }}
+        sea.geometry.attributes.position.needsUpdate = true;
+        renderer.render(scene, camera);
+    }}
+    animate();
+</script>
+<style>
+    body {{ margin: 0; overflow: hidden; }}
+    canvas {{ width: 100% !important; height: 500px !important; border-radius: 15px; }}
+</style>
+"""
+
+# Renderizar el componente
+components.html(three_js_code, height=550)
+
+st.info("💡 Consejo Pro: Usa los controles laterales para ajustar el labio de la ola y generar el tubo perfecto.")
