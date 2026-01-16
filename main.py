@@ -1,93 +1,79 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-# Configuración de la página profesional
 st.set_page_config(page_title="Confital Wave Designer Pro", layout="wide")
 
-st.title("🌊 Confital Wave Designer Pro")
-st.sidebar.header("Parámetros de la Ola")
+st.sidebar.header("🎛️ Controles de Ingeniería")
+h = st.sidebar.slider("Altura del Swell", 1.0, 6.0, 3.5)
+c = st.sidebar.slider("Potencia del Tubo", 0.5, 4.0, 2.8)
+s = st.sidebar.slider("Velocidad Mar", 0.5, 3.0, 1.5)
 
-# Controles de usuario (UI Profesional)
-h = st.sidebar.slider("Altura de la Ola (m)", 1.0, 8.0, 4.0)
-s = st.sidebar.slider("Velocidad del Periodo", 0.5, 3.0, 1.8)
-c = st.sidebar.slider("Curvatura del Tubo", 1.0, 5.0, 2.5)
-t_val = st.sidebar.slider("Cierre del Tubo (Tightness)", 0.1, 0.8, 0.3)
-
-# El código HTML/Three.js embebido
 three_js_code = f"""
-<div id="container"></div>
+<div id="container" style="width: 100%; height: 600px; border-radius: 20px; overflow: hidden;"></div>
+
 <script type="importmap">
-  {{
-    "imports": {{
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
-    }}
-  }}
+  {{ "imports": {{ "three": "https://unpkg.com/three@0.160.0/build/three.module.js" }} }}
 </script>
+
 <script type="module">
     import * as THREE from 'three';
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB);
+    scene.background = new THREE.Color(0x112233); // Fondo oscuro para resaltar el agua
 
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / 600, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({{ antialias: true }});
+    renderer.setSize(window.innerWidth, 600);
     document.getElementById('container').appendChild(renderer.domElement);
 
-    // Material con Transparencia y DoubleSide (Back-face Culling OFF)
-    const material = new THREE.MeshPhysicalMaterial({{
-        color: 0x00aaff,
-        transmission: 0.9,
-        thickness: 1.5,
-        roughness: 0.05,
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide
-    }});
+    // --- SHADER PERSONALIZADO (Crea la espuma y el color pro) ---
+    const waveShader = {{
+        uniforms: {{
+            uTime: {{ value: 0 }},
+            uHeight: {{ value: {h} }},
+            uCurl: {{ value: {c} }}
+        }},
+        vertexShader: `
+            varying float vHeight;
+            varying vec2 vUv;
+            uniform float uTime;
+            uniform float uHeight;
+            uniform float uCurl;
 
-    const geometry = new THREE.PlaneGeometry(60, 100, 120, 120);
-    const sea = new THREE.Mesh(geometry, material);
-    sea.rotation.x = -Math.PI / 2;
-    scene.add(sea);
+            void main() {{
+                vUv = uv;
+                vec3 pos = position;
+                
+                // Algoritmo de Tubo
+                float phase = pos.y * 0.2 + uTime;
+                float wave = sin(phase);
+                pos.z = wave * uHeight;
 
-    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-    sun.position.set(10, 20, 10);
-    scene.add(sun);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+                // Proyección del labio para el tubo
+                if (pos.z > 0.0) {{
+                    float lip = pow(pos.z / uHeight, 2.0);
+                    pos.x += lip * uCurl;
+                }}
 
-    camera.position.set(5, 5, 25);
-    camera.lookAt(0, 0, 0);
-
-    function animate(time) {{
-        requestAnimationFrame(animate);
-        const t = time * 0.001 * {s};
-        const pos = sea.geometry.attributes.position.array;
-
-        for (let i = 0; i < pos.length; i += 3) {{
-            let x = pos[i];
-            let y = pos[i + 1];
-
-            const waveFace = Math.sin(y * {t_val} + t);
-            pos[i + 2] = waveFace * {h};
-
-            // Efecto Tubo
-            if (pos[i + 2] > 0.5) {{ 
-                const lip = Math.pow(pos[i + 2] / {h}, 2);
-                pos[i] = x + (lip * {c});
+                vHeight = pos.z;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
             }}
-        }}
-        sea.geometry.attributes.position.needsUpdate = true;
-        renderer.render(scene, camera);
-    }}
-    animate();
-</script>
-<style>
-    body {{ margin: 0; overflow: hidden; }}
-    canvas {{ width: 100% !important; height: 500px !important; border-radius: 15px; }}
-</style>
-"""
+        `,
+        fragmentShader: `
+            varying float vHeight;
+            uniform float uHeight;
+            
+            void main() {{
+                // Color base: Azul profundo
+                vec3 deepBlue = vec3(0.02, 0.15, 0.3);
+                // Color medio: Turquesa Confital
+                vec3 turquoise = vec3(0.1, 0.7, 0.8);
+                // Color cresta: Espuma blanca
+                vec3 foam = vec3(1.0, 1.0, 1.0);
 
-# Renderizar el componente
-components.html(three_js_code, height=550)
+                float mixFactor = (vHeight + uHeight) / (uHeight * 2.0);
+                vec3 color = mix(deepBlue, turquoise, mixFactor);
 
-st.info("💡 Consejo Pro: Usa los controles laterales para ajustar el labio de la ola y generar el tubo perfecto.")
+                // Si está cerca de la cresta, añadir espuma
+                if (vHeight > uHeight * 0.8) {{
+                    color = mix(color, foam, (vHeight - uHeight *
